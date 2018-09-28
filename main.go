@@ -6,20 +6,24 @@ import (
 	"gocv.io/x/gocv"
 	"image"
 	"image/color"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
+
+const TempStoragePrefix string = "TMP_"
 
 var (
 	deviceID int
 	err      error
 	webcam   *gocv.VideoCapture
 	stream   *mjpeg.Stream
-	saveFile string
 	xmlFile  string
 	classifier gocv.CascadeClassifier
 	blue 	 color.RGBA
@@ -32,8 +36,8 @@ var (
 
 func main() {
 	defer func() { fmt.Println("shutting down...") }()
-	if len(os.Args) < 4 {
-		fmt.Println("How to run:\n\tgocam [camera ID] [classifier XML file] [host] [output file]")
+	if len(os.Args) < 6 {
+		fmt.Println("How to run:\n\tgocam [camera ID] [classifier XML file] [host] [temp recording length] [temp keep time]")
 		return
 	}
 
@@ -41,10 +45,11 @@ func main() {
 	deviceID, err = strconv.Atoi(os.Args[1])
 	xmlFile = os.Args[2]
 	host := os.Args[3]
-	saveFile = os.Args[4]
+	tempRecLength, _ := time.ParseDuration(os.Args[4])
+	tempKeepTime, _ := time.ParseDuration(os.Args[5])
 
 	// Color for the rect when faces detected
-	blue = color.RGBA{0, 0, 255, 0}
+	blue = color.RGBA{B: 255}
 
 	// Open webcam
 	webcam, err = gocv.VideoCaptureDevice(int(deviceID))
@@ -85,6 +90,11 @@ func main() {
 	// Start capturing for mjpeg stream
 	go mjpegCapture()
 	fmt.Println("Streaming to " + host)
+
+	// Output temporary files to local file system
+	go writeTemporaryStorage(tempRecLength)
+	// Purge any older temporary files (beyond the keep time)
+	go purgeTemporaryStorage(tempKeepTime)
 
 	// Start HTTP Server
 	http.Handle("/", stream)
@@ -128,5 +138,48 @@ func mjpegCapture() {
 		buf, _ := gocv.IMEncode(".jpg", img)
 		stream.UpdateJPEG(buf)
 		mut.Unlock()
+	}
+}
+
+func writeTemporaryStorage(interval time.Duration) {
+	startTime := time.Now()
+	goalTime := startTime.Unix() + int64(interval.Seconds())
+	outputFileName := TempStoragePrefix + startTime.Format(time.RFC3339) + ".avi"
+
+	mut.Lock()
+	writer, err := gocv.VideoWriterFile(outputFileName, "MJPG", 55, img.Cols(), img.Rows(), true)
+	mut.Unlock()
+	if err != nil {
+		fmt.Printf("error opening video writer device: %v\n", outputFileName)
+		return
+	}
+	defer writer.Close()
+
+	for {
+		curTime := time.Now().Unix()
+		if curTime >= goalTime {
+			break
+		}
+
+		writer.Write(img)
+	}
+
+	fmt.Printf("%v seconds of video temporarily written to disk at %v\n", interval.Seconds(), outputFileName)
+	go writeTemporaryStorage(interval)
+}
+
+func purgeTemporaryStorage(keepTime time.Duration) {
+	for {
+		cwd, _ := os.Getwd()
+		files, _ := ioutil.ReadDir(cwd)
+		for _, f := range files {
+			if !f.IsDir() && strings.HasPrefix(f.Name(), TempStoragePrefix) {
+				diff := time.Since(f.ModTime())
+				if diff >= keepTime {
+					os.Remove(f.Name())
+					log.Printf("Deleted legacy storage record %v", f.Name())
+				}
+			}
+		}
 	}
 }
