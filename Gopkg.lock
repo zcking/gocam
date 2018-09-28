@@ -2,6 +2,14 @@
 
 
 [[projects]]
+  branch = "master"
+  digest = "1:9956f4f58b2ccea25656086bcd7be0273915961a8231965a1a6c886874172054"
+  name = "github.com/hybridgroup/mjpeg"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "4680f319790ebffe28bbee775ecd1725693731ca"
+
+[[projects]]
   digest = "1:52a94d0eb5420c4f6ec0ca108c1820884c2a66ae6027f90f2326db08ffe7b0bd"
   name = "gocv.io/x/gocv"
   packages = ["."]
@@ -12,6 +20,9 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  input-imports = ["gocv.io/x/gocv"]
+  input-imports = [
+    "github.com/hybridgroup/mjpeg",
+    "gocv.io/x/gocv",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
