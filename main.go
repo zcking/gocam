@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/hybridgroup/mjpeg"
 	"gocv.io/x/gocv"
 	"image"
@@ -34,10 +33,17 @@ var (
 	mut 	sync.Mutex
 )
 
+var (
+	isRunning = false
+	runMut 	  sync.Mutex
+)
+
+var writeMut sync.Mutex
+
 func main() {
-	defer func() { fmt.Println("shutting down...") }()
+	defer func() { log.Println("Gocam shutting down...") }()
 	if len(os.Args) < 6 {
-		fmt.Println("How to run:\n\tgocam [camera ID] [classifier XML file] [host] [temp recording length] [temp keep time]")
+		log.Println("How to run:\n\tgocam [camera ID] [classifier XML file] [host] [temp recording length] [temp keep time]")
 		return
 	}
 
@@ -54,7 +60,7 @@ func main() {
 	// Open webcam
 	webcam, err = gocv.VideoCaptureDevice(int(deviceID))
 	if err != nil {
-		fmt.Println(err)
+		log.Fatalln(err)
 		return
 	}
 	defer webcam.Close()
@@ -72,7 +78,7 @@ func main() {
 	defer classifier.Close()
 
 	if !classifier.Load(xmlFile) {
-		fmt.Printf("Error reading cascade file: %v\n", xmlFile)
+		log.Fatalf("Error reading cascade file: %v\n", xmlFile)
 		return
 	}
 
@@ -82,22 +88,74 @@ func main() {
 	// Capture images from the camera in parallel
 	go func() {
 		for {
-			captureImage()
-			detectFaces()
+			runMut.Lock()
+			r := isRunning
+			runMut.Unlock()
+			if r {
+				captureImage()
+				detectFaces()
+			}
 		}
 	}()
 
 	// Start capturing for mjpeg stream
-	go mjpegCapture()
-	fmt.Println("Streaming to " + host)
+	go func() {
+		for {
+			runMut.Lock()
+			r := isRunning
+			runMut.Unlock()
+			if r {
+				mjpegCapture()
+			}
+		}
+	}()
 
 	// Output temporary files to local file system
-	go writeTemporaryStorage(tempRecLength)
+	go func() {
+		for {
+			writeMut.Lock()
+			writeTemporaryStorage(tempRecLength)
+			writeMut.Unlock()
+		}
+	}()
 	// Purge any older temporary files (beyond the keep time)
 	go purgeTemporaryStorage(tempKeepTime)
 
-	// Start HTTP Server
-	http.Handle("/", stream)
+	// Spin up the controller server
+	http.HandleFunc("/health", func(w http.ResponseWriter, request *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	http.HandleFunc("/api/power/off", func(w http.ResponseWriter, request *http.Request) {
+		runMut.Lock()
+		defer runMut.Unlock()
+
+		// Shutdown the camera
+		isRunning = false
+		log.Println("Gocam powering off...")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	http.HandleFunc("/api/power/on", func(w http.ResponseWriter, request *http.Request) {
+		runMut.Lock()
+		defer runMut.Unlock()
+
+		// Poweron the camera
+		isRunning = true
+		log.Printf("Gocam powering on... Streaming to %v\n", host)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	http.HandleFunc("/cam", func(w http.ResponseWriter, request *http.Request) {
+		runMut.Lock()
+		r := isRunning
+		runMut.Unlock()
+		if !r {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			stream.ServeHTTP(w, request)
+		}
+	})
 	log.Fatal(http.ListenAndServe(host, nil))
 }
 
@@ -107,7 +165,7 @@ func detectFaces() {
 
 	// Detect faces
 	rects := classifier.DetectMultiScale(img)
-	//fmt.Printf("found %d faces\n", len(rects))
+	//log.Printf("found %d faces\n", len(rects))
 
 	// Draw a rectangle around each face on the original image,
 	// along with text identifying as "Human"
@@ -124,7 +182,7 @@ func captureImage() {
 	defer mut.Unlock()
 
 	if ok := webcam.Read(&img); !ok {
-		fmt.Printf("Device closed: %v\n", deviceID)
+		log.Fatalf("Device closed: %v\n", deviceID)
 		syscall.Exit(-1)
 	}
 	if img.Empty() {
@@ -133,15 +191,20 @@ func captureImage() {
 }
 
 func mjpegCapture() {
-	for {
-		mut.Lock()
-		buf, _ := gocv.IMEncode(".jpg", img)
-		stream.UpdateJPEG(buf)
-		mut.Unlock()
-	}
+	mut.Lock()
+	buf, _ := gocv.IMEncode(".jpg", img)
+	stream.UpdateJPEG(buf)
+	mut.Unlock()
 }
 
 func writeTemporaryStorage(interval time.Duration) {
+	runMut.Lock()
+	r := isRunning
+	runMut.Unlock()
+	if !r {
+		return
+	}
+
 	startTime := time.Now()
 	goalTime := startTime.Unix() + int64(interval.Seconds())
 	outputFileName := TempStoragePrefix + startTime.Format(time.RFC3339) + ".avi"
@@ -150,8 +213,7 @@ func writeTemporaryStorage(interval time.Duration) {
 	writer, err := gocv.VideoWriterFile(outputFileName, "MJPG", 55, img.Cols(), img.Rows(), true)
 	mut.Unlock()
 	if err != nil {
-		fmt.Printf("error opening video writer device: %v\n", outputFileName)
-		return
+		log.Fatalf("error opening video writer device: %v\n", outputFileName)
 	}
 	defer writer.Close()
 
@@ -161,11 +223,15 @@ func writeTemporaryStorage(interval time.Duration) {
 			break
 		}
 
-		writer.Write(img)
+		runMut.Lock()
+		r := isRunning
+		runMut.Unlock()
+		if r {
+			writer.Write(img)
+		}
 	}
 
-	fmt.Printf("%v seconds of video temporarily written to disk at %v\n", interval.Seconds(), outputFileName)
-	go writeTemporaryStorage(interval)
+	log.Printf("%v seconds elapsed; ephemerally written to disk at %v\n", interval.Seconds(), outputFileName)
 }
 
 func purgeTemporaryStorage(keepTime time.Duration) {
