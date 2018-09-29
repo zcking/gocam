@@ -61,5 +61,5 @@ make install
 ```
 6. Finally...build GoCam!
 ```bash
-go get github.com/zcking/gocam
+go install github.com/zcking/gocam
 ```
