@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"github.com/hybridgroup/mjpeg"
+	"github.com/spf13/viper"
 	"gocv.io/x/gocv"
 	"image"
 	"image/color"
@@ -11,7 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -48,18 +49,38 @@ var writeMut sync.Mutex
 
 func main() {
 	defer func() { log.Println("Gocam shutting down...") }()
-	if len(os.Args) < 6 {
-		log.Println("How to run:\n\tgocam [camera ID] [classifier XML file] [host] [temp recording length] [temp keep time]")
-		return
-	}
+
+	// Parse the configuration file
+	if os.Getenv("ENV") == "DEV" {
+		viper.SetConfigName("default")
+		viper.SetConfigType("yaml")
+		viper.AddConfigPath("./config")
+		viper.AddConfigPath(".")
+		err := viper.ReadInConfig()
+		if err != nil {
+			log.Fatalf("[ERROR]: Failed to configure GoCam: %s\n", err)
+			os.Exit(1)
+		}
+	} else {  viper.AutomaticEnv() }
+
+	// Set defaults for configuration
+	viper.SetDefault("host", "127.0.0.1")
+	viper.SetDefault("port", 5000)
+	viper.SetDefault("captureDevice", 0)
+	viper.SetDefault("facialDetectionFile", filepath.Join("data", ""))
+	viper.SetDefault("tempRecLength", "0m")
+	viper.SetDefault("tempKeepTime", "0m")
+	viper.SetDefault("contrast", 0.5)
+	viper.SetDefault("saturation", 0.75)
+	viper.SetDefault("fps", 20)
+	viper.SetDefault("brightness", 0.6)
 
 	// Parse arguments
-	// TODO: Use goopt or some other proper CLI parsing library
-	deviceID, err = strconv.Atoi(os.Args[1])
-	xmlFile = os.Args[2]
-	host := os.Args[3]
-	tempRecLength, _ := time.ParseDuration(os.Args[4])
-	tempKeepTime, _ := time.ParseDuration(os.Args[5])
+	deviceID = viper.GetInt("captureDevice")
+	xmlFile = viper.GetString("facialDetectionFile")
+	host := viper.GetString("host") + ":" + viper.GetString("port")
+	tempRecLength, _ := time.ParseDuration(viper.GetString("tempRecLength"))
+	tempKeepTime, _ := time.ParseDuration(viper.GetString("tempKeepTime"))
 
 	// Color for the rect when faces detected
 	blue = color.RGBA{B: 255}
@@ -88,6 +109,13 @@ func main() {
 		}
 	}()
 
+	// Video capture settings
+	log.Printf("Video capture configured with codec %q\n", webcam.CodecString())
+	webcam.Set(gocv.VideoCaptureSaturation, viper.GetFloat64("saturation"))
+	webcam.Set(gocv.VideoCaptureFPS, viper.GetFloat64("fps"))
+	webcam.Set(gocv.VideoCaptureBrightness, viper.GetFloat64("brightness"))
+	webcam.Set(gocv.VideoCaptureContrast, viper.GetFloat64("contrast"))
+
 	// Prepare image matrix
 	img = gocv.NewMat()
 	defer img.Close()
@@ -97,12 +125,16 @@ func main() {
 
 	// Enable face detection
 	// Load classifier to recognize faces
-	classifier = gocv.NewCascadeClassifier()
-	defer classifier.Close()
+	if xmlFile != "" {
+		classifier = gocv.NewCascadeClassifier()
+		defer classifier.Close()
 
-	if !classifier.Load(xmlFile) {
-		log.Fatalf("Error reading cascade file: %v\n", xmlFile)
-		return
+		if !classifier.Load(xmlFile) {
+			log.Fatalf("Error reading cascade file: %v\n", xmlFile)
+			return
+		}
+	} else {
+		log.Println("[WARN]: No facial detection data file provided; facial detection disabled.")
 	}
 
 	// Capture a single image just to initialize the image variable
@@ -116,7 +148,9 @@ func main() {
 			runMut.Unlock()
 			if r {
 				captureImage()
-				detectFaces()
+				if xmlFile != "" {
+					detectFaces()
+				}
 			}
 		}
 	}()
