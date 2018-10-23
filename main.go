@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"github.com/hybridgroup/mjpeg"
 	"gocv.io/x/gocv"
 	"image"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,9 +36,13 @@ var (
 )
 
 var (
-	isRunning = false
+	isRunning = true
 	runMut 	  sync.Mutex
 )
+
+type PowerResponse struct {
+	status string
+}
 
 var writeMut sync.Mutex
 
@@ -48,6 +54,7 @@ func main() {
 	}
 
 	// Parse arguments
+	// TODO: Use goopt or some other proper CLI parsing library
 	deviceID, err = strconv.Atoi(os.Args[1])
 	xmlFile = os.Args[2]
 	host := os.Args[3]
@@ -64,6 +71,22 @@ func main() {
 		return
 	}
 	defer webcam.Close()
+
+	// Setup OS signal trapping to do proper cleanup of webcam on exit
+	sigCh := make(chan os.Signal)
+	signal.Notify(sigCh, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGINT)
+	signal.Stop(sigCh)
+	go func(){
+		for sig := range sigCh {
+			// sig is a ^C, handle it
+			log.Fatalf("Received Signal: %+v\n", sig.Signal)
+			log.Println("Waiting for 2 seconds to finish shutting down...")
+			log.Println("Gocam shutting down...")
+			webcam.Close()
+			time.Sleep(2 * time.Second)
+			os.Exit(0)
+		}
+	}()
 
 	// Prepare image matrix
 	img = gocv.NewMat()
@@ -111,15 +134,24 @@ func main() {
 	}()
 
 	// Output temporary files to local file system
-	go func() {
-		for {
-			writeMut.Lock()
-			writeTemporaryStorage(tempRecLength)
-			writeMut.Unlock()
-		}
-	}()
+	if tempRecLength > 0 {
+		go func() {
+			for {
+				writeMut.Lock()
+				writeTemporaryStorage(tempRecLength)
+				writeMut.Unlock()
+			}
+		}()
+	} else {
+		log.Println("[WARN]: temp recording length set to 0; recording will not be saved to file system.")
+	}
+
 	// Purge any older temporary files (beyond the keep time)
-	go purgeTemporaryStorage(tempKeepTime)
+	if tempKeepTime > 0 {
+		go purgeTemporaryStorage(tempKeepTime)
+	} else {
+		log.Println("[WARN]: temp keep time set to 0; any recordings saved to file system will not be erased.")
+	}
 
 	// Spin up the controller server
 	http.HandleFunc("/health", func(w http.ResponseWriter, request *http.Request) {
@@ -128,22 +160,38 @@ func main() {
 
 	http.HandleFunc("/api/power/off", func(w http.ResponseWriter, request *http.Request) {
 		runMut.Lock()
-		defer runMut.Unlock()
 
 		// Shutdown the camera
 		isRunning = false
+		runMut.Unlock()
 		log.Println("Gocam powering off...")
-		w.WriteHeader(http.StatusOK)
+
+		data := PowerResponse{"off"}
+		js, err := json.Marshal(data)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(js)
+		}
 	})
 
 	http.HandleFunc("/api/power/on", func(w http.ResponseWriter, request *http.Request) {
 		runMut.Lock()
-		defer runMut.Unlock()
 
 		// Poweron the camera
 		isRunning = true
+		runMut.Unlock()
 		log.Printf("Gocam powering on... Streaming to %v\n", host)
-		w.WriteHeader(http.StatusOK)
+
+		data := PowerResponse{"on"}
+		js, err := json.Marshal(data)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(js)
+		}
 	})
 
 	http.HandleFunc("/cam", func(w http.ResponseWriter, request *http.Request) {
@@ -152,6 +200,7 @@ func main() {
 		runMut.Unlock()
 		if !r {
 			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("Camera is powered off currently."))
 		} else {
 			stream.ServeHTTP(w, request)
 		}
