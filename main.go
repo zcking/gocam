@@ -2,9 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/hybridgroup/mjpeg"
-	"github.com/spf13/viper"
-	"gocv.io/x/gocv"
 	"image"
 	"image/color"
 	"io/ioutil"
@@ -17,31 +14,35 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/hybridgroup/mjpeg"
+	"github.com/spf13/viper"
+	"gocv.io/x/gocv"
 )
 
-const TempStoragePrefix string = "TMP_"
+const tempStoragePrefix string = "TMP_"
 
 var (
-	deviceID int
-	err      error
-	webcam   *gocv.VideoCapture
-	stream   *mjpeg.Stream
-	xmlFile  string
+	deviceID   int
+	err        error
+	webcam     *gocv.VideoCapture
+	stream     *mjpeg.Stream
+	xmlFile    string
 	classifier gocv.CascadeClassifier
-	blue 	 color.RGBA
+	blue       color.RGBA
 )
 
 var (
-	img 	gocv.Mat
-	mut 	sync.Mutex
+	img gocv.Mat
+	mut sync.Mutex
 )
 
 var (
 	isRunning = true
-	runMut 	  sync.Mutex
+	runMut    sync.Mutex
 )
 
-type PowerResponse struct {
+type powerResponse struct {
 	status string
 }
 
@@ -51,17 +52,15 @@ func main() {
 	defer func() { log.Println("Gocam shutting down...") }()
 
 	// Parse the configuration file
-	if os.Getenv("ENV") == "DEV" {
-		viper.SetConfigName("default")
-		viper.SetConfigType("yaml")
-		viper.AddConfigPath("./config")
-		viper.AddConfigPath(".")
-		err := viper.ReadInConfig()
-		if err != nil {
-			log.Fatalf("[ERROR]: Failed to configure GoCam: %s\n", err)
-			os.Exit(1)
-		}
-	} else {  viper.AutomaticEnv() }
+	viper.SetConfigName("default")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("./config")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Fatalf("[ERROR]: Failed to configure GoCam: %s\n", err)
+		os.Exit(1)
+	}
 
 	// Set defaults for configuration
 	viper.SetDefault("host", "127.0.0.1")
@@ -97,10 +96,10 @@ func main() {
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGINT)
 	signal.Stop(sigCh)
-	go func(){
+	go func() {
 		for sig := range sigCh {
 			// sig is a ^C, handle it
-			log.Fatalf("Received Signal: %+v\n", sig.Signal)
+			log.Fatalf("Received Signal: %v\n", sig)
 			log.Println("Waiting for 2 seconds to finish shutting down...")
 			log.Println("Gocam shutting down...")
 			webcam.Close()
@@ -200,7 +199,7 @@ func main() {
 		runMut.Unlock()
 		log.Println("Gocam powering off...")
 
-		data := PowerResponse{"off"}
+		data := powerResponse{"off"}
 		js, err := json.Marshal(data)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -218,7 +217,7 @@ func main() {
 		runMut.Unlock()
 		log.Printf("Gocam powering on... Streaming to %v\n", host)
 
-		data := PowerResponse{"on"}
+		data := powerResponse{"on"}
 		js, err := json.Marshal(data)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -290,7 +289,7 @@ func writeTemporaryStorage(interval time.Duration) {
 
 	startTime := time.Now()
 	goalTime := startTime.Unix() + int64(interval.Seconds())
-	outputFileName := TempStoragePrefix + startTime.Format(time.RFC3339) + ".avi"
+	outputFileName := tempStoragePrefix + startTime.Format(time.RFC3339) + ".avi"
 
 	mut.Lock()
 	writer, err := gocv.VideoWriterFile(outputFileName, "MJPG", 55, img.Cols(), img.Rows(), true)
@@ -322,7 +321,7 @@ func purgeTemporaryStorage(keepTime time.Duration) {
 		cwd, _ := os.Getwd()
 		files, _ := ioutil.ReadDir(cwd)
 		for _, f := range files {
-			if !f.IsDir() && strings.HasPrefix(f.Name(), TempStoragePrefix) {
+			if !f.IsDir() && strings.HasPrefix(f.Name(), tempStoragePrefix) {
 				diff := time.Since(f.ModTime())
 				if diff >= keepTime {
 					os.Remove(f.Name())
