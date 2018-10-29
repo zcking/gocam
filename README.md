@@ -19,6 +19,18 @@ filters or special lenses.
 
 ---
 
+## Running GoCam
+Once you have a binary of GoCam to run, you 
+can start it like any other program, 
+by simply executing `./gocam`.  
+
+Note: GoCam expects a YAML configuration file 
+at `./config/default.yaml` by default. You may 
+refer to the configuration file in this repository 
+for an example.
+
+---
+
 ## Building
 Currently, this project is an infant and I haven't set up any Docker images, Vagrant files, or anything of the sort.
 However, if you have golang installed, compiling is very simple: `go build`.
@@ -62,4 +74,32 @@ make install
 6. Finally...build GoCam!
 ```bash
 go install github.com/zcking/gocam
+```
+
+---
+
+## Remote Access: Networking Setup
+To allow you to access the web server on the GoCam, 
+you'll need to modify your firewall. You can do 
+this with traditional `iptables` like so:  
+```bash
+# This will allow TCP traffic to port 80 
+# on the PI, from anywhere.
+sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+```
+
+If you don't need SSH access to the GoCam, 
+after creating the previous rule, you can 
+restrict access to prevent any unauthorized 
+access with the following:
+```bash
+# This will drop all other input traffic
+sudo iptables -A INPUT -j DROP
+```
+
+To make the above `iptables` changes 
+persistent on reboots, you can run the 
+following:  
+```bash
+sudo /sbin/iptables-save
 ```
