@@ -42,8 +42,8 @@ var (
 	runMut    sync.Mutex
 )
 
-type powerResponse struct {
-	status string
+type PowerResponse struct {
+	PowerOn bool
 }
 
 var writeMut sync.Mutex
@@ -192,6 +192,7 @@ func main() {
 	})
 
 	http.HandleFunc("/api/power/off", func(w http.ResponseWriter, request *http.Request) {
+		setupResponse(&w, request)
 		runMut.Lock()
 
 		// Shutdown the camera
@@ -199,7 +200,7 @@ func main() {
 		runMut.Unlock()
 		log.Println("Gocam powering off...")
 
-		data := powerResponse{"off"}
+		data := PowerResponse{isRunning}
 		js, err := json.Marshal(data)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -210,6 +211,7 @@ func main() {
 	})
 
 	http.HandleFunc("/api/power/on", func(w http.ResponseWriter, request *http.Request) {
+		setupResponse(&w, request)
 		runMut.Lock()
 
 		// Poweron the camera
@@ -217,7 +219,19 @@ func main() {
 		runMut.Unlock()
 		log.Printf("Gocam powering on... Streaming to %v\n", host)
 
-		data := powerResponse{"on"}
+		data := PowerResponse{isRunning}
+		js, err := json.Marshal(data)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(js)
+		}
+	})
+
+	http.HandleFunc("/api/power", func(w http.ResponseWriter, request *http.Request) {
+		setupResponse(&w, request)
+		data := PowerResponse{isRunning}
 		js, err := json.Marshal(data)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -270,6 +284,12 @@ func captureImage() {
 	if img.Empty() {
 		syscall.Exit(-1)
 	}
+}
+
+func setupResponse(w *http.ResponseWriter, req *http.Request) {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+	(*w).Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+	(*w).Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 }
 
 func mjpegCapture() {

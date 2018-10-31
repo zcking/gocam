@@ -1,5 +1,5 @@
 host: "0.0.0.0"
-port: 8080
+port: 4040
 captureDevice: 0
 facialDetectionFile: "/home/zcking/go/src/github.com/zcking/gocam/data/haarcascade_frontalface_default.xml"
 tempRecLength: "0m"
