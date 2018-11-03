@@ -8,7 +8,8 @@
             <div class="card-body">
                 <ul class="list-group list-group-flush">
                     <li v-for="archive in archives" v-bind:key="archive.Name" class="list-group-item">
-                        {{ archive.Name }} <a href="#" class="text-danger" v-on:click="deleteArchive(archive.Name)">&#x274C;</a>
+                        <a v-bind:href="archiveHref(archive.Name)" title="Download" target="_blank">{{ archive.Name }}</a>&nbsp;
+                        <a href="#" class="text-danger" v-on:click="deleteArchive(archive.Name)">&#x274C;</a>
                     </li>
                 </ul>
             </div>
@@ -41,6 +42,9 @@
                     level: 'danger',
                     text: 'The feature to delete archives has not yet been implemented; cannot delete ' + archiveName
                 })
+            },
+            archiveHref: function(archiveName) {
+                return "http://localhost:4040/archives/" + archiveName
             }
         },
         created: function() {
