@@ -201,6 +201,7 @@ func main() {
 
 
 func HealthHandler(w http.ResponseWriter, request *http.Request) {
+	setupResponse(&w, request)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -259,6 +260,7 @@ func GetPowerHandler(w http.ResponseWriter, request *http.Request) {
 
 
 func ServeCamera(w http.ResponseWriter, request *http.Request) {
+	setupResponse(&w, request)
 	runMut.Lock()
 	r := isRunning
 	runMut.Unlock()
@@ -272,6 +274,7 @@ func ServeCamera(w http.ResponseWriter, request *http.Request) {
 
 
 func ListArchivesHandler(w http.ResponseWriter, request *http.Request) {
+	setupResponse(&w, request)
 	files, err := ioutil.ReadDir("archive")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

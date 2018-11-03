@@ -2,25 +2,39 @@
     <div class="gocam-dashboard">
         <h1>GoCam</h1>
 
+        <div class="alerts">
+            <div v-for="alert in alerts" v-bind:class="alertClass(alert)" role="alert">
+                {{ alert.text }}
+            </div>
+        </div>
+
         <button class="btn" v-bind:class="{ 'btn-success': this.status === 'on', 'btn-danger': this.status === 'off' }"
                 v-on:click="togglePower()" id="PowerToggleBtn" type="button">Power {{ this.nstatus }}</button>
 
-        <div class="row">
-            <div class="col-lg-12">
-                <!-- TODO: Implement and place a frame with live cam view in it here -->
+        <div class="row content">
+            <div class="col-lg-8">
                 <iframe id="frame" class="cam-frame" src="http://localhost:4040/cam" width="80%"></iframe>
+            </div>
+
+            <div class="col-lg-4">
+                <archive-explorer v-on:add-alert="addAlert($event)"/>
             </div>
         </div>
     </div>
 </template>
 
 <script>
+    import ArchiveExplorer from './ArchiveExplorer'
     import axios from 'axios';
     export default {
         name: "DashboardComponent",
+        components: {
+            ArchiveExplorer,
+        },
         data: function() {
             return {
-                powerOn: false
+                powerOn: false,
+                alerts: []
             }
         },
         computed: {
@@ -37,7 +51,7 @@
                 } else {
                     return "on"
                 }
-            }
+            },
         },
         methods: {
             getPowerStatus: function() {
@@ -58,6 +72,13 @@
             },
             togglePower: function() {
                 this.setPower(!this.powerOn);
+            },
+            alertClass: function(alert) {
+                return "alert alert-" + alert.level
+            },
+            addAlert: function(alert) {
+                alert.id = Object.keys(this.alerts).length;
+                this.alerts.push(alert)
             }
         },
         created: function() {
@@ -68,9 +89,12 @@
 
 <style scoped>
 .cam-frame {
-    margin-top: 10px;
     margin-left: auto;
     margin-right: auto;
+}
+
+.content {
+    margin-top: 10px;
 }
 
 /*#wrap { width: 400px; height: 400px; padding: 0; overflow: hidden; }*/
