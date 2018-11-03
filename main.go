@@ -193,6 +193,9 @@ func main() {
 	http.HandleFunc("/cam", ServeCamera)
 	http.HandleFunc("/api/archives", ListArchivesHandler)
 
+	//http.Handle("/archives", http.FileServer(http.Dir("archive")))
+	http.Handle("/", http.StripPrefix(strings.TrimRight("/archives", "/"), http.FileServer(http.Dir("archive"))))
+
 	log.Fatal(http.ListenAndServe(host, nil))
 }
 
@@ -327,10 +330,10 @@ func captureImage() {
 
 	if ok := webcam.Read(&img); !ok {
 		log.Fatalf("Device closed: %v\n", deviceID)
-		syscall.Exit(-1)
+		os.Exit(-1)
 	}
 	if img.Empty() {
-		syscall.Exit(-1)
+		os.Exit(-1)
 	}
 }
 
