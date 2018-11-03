@@ -24,7 +24,6 @@ const tempStoragePrefix string = "TMP_"
 
 var (
 	deviceID   int
-	err        error
 	webcam     *gocv.VideoCapture
 	stream     *mjpeg.Stream
 	xmlFile    string
@@ -252,8 +251,47 @@ func main() {
 			stream.ServeHTTP(w, request)
 		}
 	})
+
+	http.HandleFunc("/api/archives", ListArchivesHandler)
+
 	log.Fatal(http.ListenAndServe(host, nil))
 }
+
+
+func ListArchivesHandler(w http.ResponseWriter, request *http.Request) {
+	files, err := ioutil.ReadDir("archive")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else {
+		fileInfos := []FileInfo{}
+		for _, file := range files {
+			fileInfos = append(fileInfos, FileInfo{file,})
+		}
+
+		js, encErr := json.Marshal(fileInfos)
+		if encErr != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(js)
+		}
+	}
+}
+
+type FileInfo struct {
+	os.FileInfo
+}
+
+func (f FileInfo) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"Name":    f.Name(),
+		"Size":    f.Size(),
+		"Mode":    f.Mode(),
+		"ModTime": f.ModTime(),
+		"IsDir":   f.IsDir(),
+	})
+}
+
 
 func detectFaces() {
 	mut.Lock()
@@ -310,12 +348,13 @@ func writeTemporaryStorage(interval time.Duration) {
 	startTime := time.Now()
 	goalTime := startTime.Unix() + int64(interval.Seconds())
 	outputFileName := tempStoragePrefix + startTime.Format(time.RFC3339) + ".avi"
+	outputPath := filepath.Join("archive", outputFileName)
 
 	mut.Lock()
-	writer, err := gocv.VideoWriterFile(outputFileName, "MJPG", 55, img.Cols(), img.Rows(), true)
+	writer, err := gocv.VideoWriterFile(outputPath, "MJPG", 55, img.Cols(), img.Rows(), true)
 	mut.Unlock()
 	if err != nil {
-		log.Fatalf("error opening video writer device: %v\n", outputFileName)
+		log.Fatalf("error opening video writer device: %v\n", outputPath)
 	}
 	defer writer.Close()
 
@@ -333,7 +372,7 @@ func writeTemporaryStorage(interval time.Duration) {
 		}
 	}
 
-	log.Printf("%v seconds elapsed; ephemerally written to disk at %v\n", interval.Seconds(), outputFileName)
+	log.Printf("%v seconds elapsed; ephemerally written to disk at %v\n", interval.Seconds(), outputPath)
 }
 
 func purgeTemporaryStorage(keepTime time.Duration) {
