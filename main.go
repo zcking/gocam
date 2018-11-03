@@ -186,75 +186,85 @@ func main() {
 	}
 
 	// Spin up the controller server
-	http.HandleFunc("/health", func(w http.ResponseWriter, request *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	http.HandleFunc("/api/power/off", func(w http.ResponseWriter, request *http.Request) {
-		setupResponse(&w, request)
-		runMut.Lock()
-
-		// Shutdown the camera
-		isRunning = false
-		runMut.Unlock()
-		log.Println("Gocam powering off...")
-
-		data := PowerResponse{isRunning}
-		js, err := json.Marshal(data)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(js)
-		}
-	})
-
-	http.HandleFunc("/api/power/on", func(w http.ResponseWriter, request *http.Request) {
-		setupResponse(&w, request)
-		runMut.Lock()
-
-		// Poweron the camera
-		isRunning = true
-		runMut.Unlock()
-		log.Printf("Gocam powering on... Streaming to %v\n", host)
-
-		data := PowerResponse{isRunning}
-		js, err := json.Marshal(data)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(js)
-		}
-	})
-
-	http.HandleFunc("/api/power", func(w http.ResponseWriter, request *http.Request) {
-		setupResponse(&w, request)
-		data := PowerResponse{isRunning}
-		js, err := json.Marshal(data)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(js)
-		}
-	})
-
-	http.HandleFunc("/cam", func(w http.ResponseWriter, request *http.Request) {
-		runMut.Lock()
-		r := isRunning
-		runMut.Unlock()
-		if !r {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Camera is powered off currently."))
-		} else {
-			stream.ServeHTTP(w, request)
-		}
-	})
-
+	http.HandleFunc("/health", HealthHandler)
+	http.HandleFunc("/api/power/off", PowerOffHandler)
+	http.HandleFunc("/api/power/on", PowerOnHandler)
+	http.HandleFunc("/api/power", GetPowerHandler)
+	http.HandleFunc("/cam", ServeCamera)
 	http.HandleFunc("/api/archives", ListArchivesHandler)
 
 	log.Fatal(http.ListenAndServe(host, nil))
+}
+
+
+func HealthHandler(w http.ResponseWriter, request *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
+
+func PowerOffHandler(w http.ResponseWriter, request *http.Request) {
+	setupResponse(&w, request)
+	runMut.Lock()
+
+	// Shutdown the camera
+	isRunning = false
+	runMut.Unlock()
+	log.Println("Gocam powering off...")
+
+	data := PowerResponse{isRunning}
+	js, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(js)
+	}
+}
+
+
+func PowerOnHandler(w http.ResponseWriter, request *http.Request) {
+	setupResponse(&w, request)
+	runMut.Lock()
+
+	// Poweron the camera
+	isRunning = true
+	runMut.Unlock()
+	log.Printf("Gocam powering on...\n")
+
+	data := PowerResponse{isRunning}
+	js, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(js)
+	}
+}
+
+
+func GetPowerHandler(w http.ResponseWriter, request *http.Request) {
+	setupResponse(&w, request)
+	data := PowerResponse{isRunning}
+	js, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(js)
+	}
+}
+
+
+func ServeCamera(w http.ResponseWriter, request *http.Request) {
+	runMut.Lock()
+	r := isRunning
+	runMut.Unlock()
+	if !r {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("Camera is powered off currently."))
+	} else {
+		stream.ServeHTTP(w, request)
+	}
 }
 
 
