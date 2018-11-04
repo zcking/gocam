@@ -5,6 +5,9 @@
         <div class="alerts">
             <div v-for="alert in alerts" v-bind:class="alertClass(alert)" v-bind:key="alert.id" role="alert">
                 {{ alert.text }}
+                <button type="button" class="close" aria-label="Close" v-on:click="deleteAlert(alert.id)">
+                    <span aria-hidden="true">&times;</span>
+                </button>
             </div>
         </div>
 
@@ -77,8 +80,16 @@
                 return "alert alert-" + alert.level
             },
             addAlert: function(alert) {
-                alert.id = Object.keys(this.alerts).length;
+                alert.id = this.alerts.length;
                 this.alerts.push(alert)
+            },
+            deleteAlert: function(alertId) {
+                for (var i = 0; i < this.alerts.length; i++) {
+                    if (this.alerts[i].id === alertId) {
+                        this.alerts.splice(i, 1);
+                        break
+                    }
+                }
             }
         },
         created: function() {

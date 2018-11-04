@@ -49,15 +49,12 @@
                                 text: archiveName + ' deleted.'
                             })
                         } else {
-                            // eslint-disable-next-line
-                            console.error(resp);
                             this.$emit('add-alert', {
                                 level: 'danger',
                                 text: resp.data
                             })
                         }
                     }).catch(err => {
-                        console.error(err);
                         this.$emit('add-alert', {
                             level: 'danger',
                             text: err

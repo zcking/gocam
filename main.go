@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"image"
 	"image/color"
 	"io/ioutil"
 	"log"
@@ -350,9 +349,9 @@ func detectFaces() {
 	// along with text identifying as "Human"
 	for _, r := range rects {
 		gocv.Rectangle(&img, r, blue, 3)
-		size := gocv.GetTextSize("Human", gocv.FontHersheyPlain, 1.2, 2)
-		pt := image.Pt(r.Min.X+(r.Min.X/2)-(size.X/2), r.Min.Y-2)
-		gocv.PutText(&img, "Human", pt, gocv.FontHersheyPlain, 1.2, blue, 2)
+		//size := gocv.GetTextSize("Human", gocv.FontHersheyPlain, 1.2, 2)
+		//pt := image.Pt(r.Min.X+(r.Min.X/2)-(size.X/2), r.Min.Y-2)
+		//gocv.PutText(&img, "Human", pt, gocv.FontHersheyPlain, 1.2, blue, 2)
 	}
 }
 
