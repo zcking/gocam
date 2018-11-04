@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"io/ioutil"
@@ -120,6 +121,7 @@ func main() {
 
 	// Create the mjpeg stream
 	stream = mjpeg.NewStream()
+	stream.FrameInterval = 25 * time.Millisecond
 
 	// Enable face detection
 	// Load classifier to recognize faces
@@ -192,11 +194,20 @@ func main() {
 	http.HandleFunc("/api/power", GetPowerHandler)
 	http.HandleFunc("/cam", ServeCamera)
 	http.HandleFunc("/api/archives", ListArchivesHandler)
+	http.HandleFunc("/api/archives/delete", DeleteArchiveHandler)
 
 	//http.Handle("/archives", http.FileServer(http.Dir("archive")))
 	http.Handle("/", http.StripPrefix(strings.TrimRight("/archives", "/"), http.FileServer(http.Dir("archive"))))
 
 	log.Fatal(http.ListenAndServe(host, nil))
+}
+
+
+func logHandler(w http.ResponseWriter, r *http.Request) {
+	t1 := time.Now()
+	fmt.Fprintf(w, "Welcome!")
+	t2 := time.Now()
+	log.Printf("[%s] %q %v", r.Method, r.URL.String(), t2.Sub(t1))
 }
 
 
@@ -293,6 +304,24 @@ func ListArchivesHandler(w http.ResponseWriter, request *http.Request) {
 		}
 	}
 }
+
+
+func DeleteArchiveHandler(w http.ResponseWriter, request *http.Request) {
+	setupResponse(&w, request)
+
+	targetArchive := request.URL.Query().Get("archive")
+
+	var archivePath string = filepath.Join("archive", targetArchive)
+	err := os.Remove(archivePath)
+	if err != nil {
+		log.Printf("[ERROR]: Unable to delete archive %s : %v", archivePath, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else {
+		log.Printf("[INFO]: Deleted archive %s\n", archivePath)
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
 
 type FileInfo struct {
 	os.FileInfo

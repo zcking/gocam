@@ -3,7 +3,7 @@
         <h1>GoCam</h1>
 
         <div class="alerts">
-            <div v-for="alert in alerts" v-bind:class="alertClass(alert)" role="alert">
+            <div v-for="alert in alerts" v-bind:class="alertClass(alert)" v-bind:key="alert.id" role="alert">
                 {{ alert.text }}
             </div>
         </div>
